@@ -71,11 +71,15 @@ class MongoAdapter {
 
     const document = Object.assign(payload, expiresAt && { expiresAt });
 
-    return this.coll().updateOne({ _id }, document, { upsert: true });
+    // the above does not work for _id sharded collections, use the one below
+    // const document = Object.assign(payload, { _id }, expiresAt && { expiresAt });
+
+    return this.coll().updateOne({ _id }, { $set: document }, { upsert: true });
   }
 
   static async connect() {
-    DB = await MongoClient.connect(process.env.MONGODB_URI);
+    const connection = await MongoClient.connect(process.env.MONGODB_URI);
+    DB = connection.db(connection.s.options.dbName);
   }
 }
 

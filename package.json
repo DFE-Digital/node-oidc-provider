@@ -1,9 +1,52 @@
 {
-  "author": "Filip Skokan <panva.ip@gmail.com>",
+  "name": "oidc-provider",
+  "version": "2.16.0",
+  "description": "OpenID Provider (OP) implementation for Node.js OpenID Connect servers.",
+  "keywords": [
+    "auth",
+    "authentication",
+    "basic",
+    "certified",
+    "config",
+    "connect",
+    "dynamic",
+    "express",
+    "hybrid",
+    "identity",
+    "implicit",
+    "koa",
+    "oauth",
+    "oauth2",
+    "oidc",
+    "openid",
+    "provider",
+    "server"
+  ],
   "homepage": "https://github.com/panva/node-oidc-provider",
+  "license": "MIT",
+  "author": "Filip Skokan <panva.ip@gmail.com>",
+  "files": [
+    "lib"
+  ],
+  "main": "lib/index.js",
+  "repository": "panva/node-oidc-provider",
+  "scripts": {
+    "coverage": "nyc node ./test/run",
+    "heroku-postbuild": "npm install mongodb@^3.0.0",
+    "lint": "eslint lib example test",
+    "lint-fix": "eslint lib example test --fix",
+    "test": "node ./test/run",
+    "update-configuration": "node ./docs/update-configuration && git add docs/configuration.md"
+  },
+  "pre-commit": [
+    "update-configuration",
+    "coverage",
+    "lint"
+  ],
   "dependencies": {
     "base64url": "^2.0.0",
-    "debug": "^3.0.0",
+    "debug": "^3.1.0",
+    "delegates": "^1.0.0",
     "ejs": "^2.5.2",
     "got": "^8.0.0",
     "http-errors": "^1.4.0",
@@ -18,66 +61,25 @@
     "raw-body": "^2.1.7",
     "uuid": "^3.0.0"
   },
-  "description": "OpenID Provider (OP) implementation for Node.js OpenID Connect servers.",
   "devDependencies": {
     "chai": "^4.0.0",
-    "eslint": "^4.3.0",
+    "eslint": "^4.19.1",
     "eslint-config-airbnb-base": "^12.0.0",
     "eslint-plugin-import": "^2.0.1",
     "koa-body": "^2.0.0",
     "koa-ejs": "^4.0.0",
     "koa-mount": "^3.0.0",
-    "mocha": "^4.0.0",
-    "moment": "^2.14.1",
+    "mocha": "^5.0.0",
+    "moment": "^2.19.3",
     "nock": "^9.0.2",
     "nyc": "^11.0.2",
     "pre-commit": "^1.2.2",
     "sinon": "^4.0.0",
     "supertest": "^3.0.0"
   },
-  "main": "lib/index.js",
-  "name": "oidc-provider",
-  "repository": "panva/node-oidc-provider",
   "engines": {
     "node": ">=8.0.0"
   },
-  "license": "MIT",
-  "keywords": [
-    "openid",
-    "connect",
-    "provider",
-    "certified",
-    "server",
-    "dynamic",
-    "config",
-    "basic",
-    "hybrid",
-    "implicit",
-    "oidc",
-    "auth",
-    "authentication",
-    "identity",
-    "oauth",
-    "oauth2",
-    "express",
-    "koa"
-  ],
-  "scripts": {
-    "coverage": "nyc node ./test/run",
-    "test": "node ./test/run",
-    "lint": "eslint lib example test",
-    "lint-fix": "eslint lib example test --fix",
-    "heroku-postbuild": "npm install mongodb@^2.0.0",
-    "update-configuration": "node ./docs/update-configuration && git add docs/configuration.md"
-  },
-  "pre-commit": [
-    "update-configuration",
-    "test"
-  ],
-  "version": "2.8.3",
-  "files": [
-    "lib"
-  ],
   "nyc": {
     "reporter": [
       "lcov",

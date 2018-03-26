@@ -22,10 +22,13 @@ point to get an idea of what you should provide.
   - [Extending Discovery with Custom Properties](#extending-discovery-with-custom-properties)
   - [Configuring Routes](#configuring-routes)
   - [Fine-tuning supported algorithms](#fine-tuning-supported-algorithms)
+  - [HTTP Request Library / Proxy settings](#http-request-library--proxy-settings)
   - [Changing HTTP Request Defaults](#changing-http-request-defaults)
   - [Authentication Context Class Reference](#authentication-context-class-reference)
+  - [Registering module middlewares (helmet, ip-filters, rate-limiters, etc)](#registering-module-middlewares-helmet-ip-filters-rate-limiters-etc)
+  - [Pre- and post-middlewares](#pre--and-post-middlewares)
   - [Mounting oidc-provider](#mounting-oidc-provider)
-  - [Trusting ssl offloading proxies](#trusting-ssl-offloading-proxies)
+  - [Trusting TLS offloading proxies](#trusting-tls-offloading-proxies)
   - [Configuration options](#configuration-options)
 
 <!-- TOC END -->
@@ -77,11 +80,13 @@ client_id is encountered. If you only wish to support clients that are initializ
 registration then make it so that your adapter resolves client find calls with a falsy value. (e.g.
 `return Promise.resolve()`).  
 
-Available [Client Metadata][client-metadata] is validated as defined by the specifications.
+Available [Client Metadata][client-metadata] is validated as defined by the specifications. This list
+is extended by other adjacent-specification related properties such as introspection and revocation
+endpoint authentication, Session Management, Front and Back-Channel Logout, etc.
 
 Note: each oidc-provider caches the clients once they are loaded. When your adapter-stored client
 configuration changes you should either reload your processes or trigger a cache clear
-(`provider.Client.cacheClear()`).
+(`provider.Client.cacheClear()` or `provider.Client.cacheClear(id)`).
 
 **via Provider interface**  
 To add pre-established clients use the `initialize` method on a oidc-provider instance. This accepts
@@ -195,6 +200,7 @@ This session contains:
 
 - details of the interaction that is required
 - all authorization request parameters
+- current session account ID should there be one
 - the uuid of the authorization request
 - the url to redirect the user to once interaction is finished
 
@@ -210,7 +216,7 @@ packing the results. See them used in the [step-by-step](https://github.com/panv
 or [in-repo](/example/index.js) examples.
 
 
-**Provider#interactionDetails**
+**`#provider.interactionDetails(req)`**
 ```js
 // with express
 expressApp.get('/interaction/:grant', async (req, res) => {
@@ -225,7 +231,7 @@ router.get('/interaction/:grant', async (ctx, next) => {
 });
 ```
 
-**Provider#interactionFinished**
+**`#provider.interactionFinished(req, res, results)`**
 ```js
 // with express
 expressApp.post('/interaction/:grant/login', async (req, res) => {
@@ -277,6 +283,25 @@ router.post('/interaction/:grant', async (ctx, next) => {
 }
 ```
 
+**`#provider.setSessionAccountId(req, id, [ts])`**
+Sometimes interactions need to be interrupted before finishing and need to be picked up later,
+when that happens but an End-User already authenticated you might want to tell the OP session
+about it, this will prevent subsequent interactions to start from scratch.
+
+```js
+// with express
+expressApp.post('/interaction/:grant/login', async (req, res) => {
+  await provider.setSessionAccountId(req, 'accountId');
+  // ...
+});
+
+// with koa
+router.post('/interaction/:grant/login', async (ctx, next) => {
+  await provider.setSessionAccountId(ctx.req, 'accountId');
+  // ...
+});
+```
+
 
 ## Enable/Disable optional oidc-provider features
 
@@ -287,6 +312,7 @@ deployment compact. The feature flags with their default values are
 | --- | --- |
 | devInteractions | yes (!!!) |
 | backchannelLogout | no |
+| frontchannelLogout | no |
 | claimsParameter | no |
 | clientCredentials | no |
 | discovery | yes |
@@ -395,7 +421,8 @@ Enables the use of Introspection endpoint as described in [RFC7662][introspectio
 tokens of type AccessToken, ClientCredentials and RefreshToken. When enabled the
 introspection_endpoint property of the discovery endpoint is published, otherwise the property
 is not sent. The use of this endpoint is covered by the same authz mechanism as the regular token
-endpoint.
+endpoint or `introspection_endpoint_auth_method` and `introspection_endpoint_auth_signing_alg` if
+defined on a client.
 ```js
 const configuration = { features: { introspection: Boolean[false] } };
 ```
@@ -411,7 +438,8 @@ Enables the use of Revocation endpoint as described in [RFC7009][revocation] for
 type AccessToken, ClientCredentials and RefreshToken. When enabled the
 revocation_endpoint property of the discovery endpoint is published, otherwise the property
 is not sent. The use of this endpoint is covered by the same authz mechanism as the regular token
-endpoint.
+endpoint or `revocation_endpoint_auth_method` and `revocation_endpoint_auth_signing_alg` if
+defined on a client.
 ```js
 const configuration = { features: { revocation: Boolean[false] } };
 ```
@@ -443,6 +471,13 @@ const configuration = { features: { sessionManagement: { keepHeaders: true } } }
 Enables features described in [Back-Channel Logout 1.0 - draft 04][backchannel-logout].
 ```js
 const configuration = { features: { sessionManagement: true, backchannelLogout: Boolean[false] } };
+```
+
+
+**Front-Channel Logout features**  
+Enables features described in [Front-Channel Logout 1.0 - draft 02][frontchannel-logout].
+```js
+const configuration = { features: { sessionManagement: true, frontchannelLogout: Boolean[false] } };
 ```
 
 
@@ -497,6 +532,11 @@ like so:
 const configuration = { features: { pkce: { forcedForNative: true } } };
 ```
 
+To fine-tune the supported methods:
+```js
+const configuration = { features: { pkce: { supportedMethods: ['plain', 'S256'] } } };
+```
+
 
 ## Custom Grant Types
 oidc-provider comes with the basic grants implemented, but you can register your own grant types,
@@ -540,8 +580,8 @@ provider.registerGrantType('password', function passwordGrantTypeFactory(provide
 
 ## Extending Authorization with Custom Parameters
 You can extend the whitelisted parameters of authorization/authentication endpoint beyond the
-defaults. These will be available in ctx.oidc.params as well as passed via the `_grant` cookie
-to the interaction.
+defaults. These will be available in ctx.oidc.params as well as passed to the interaction session
+object for you to read.
 ```js
 const oidc = new Provider('http://localhost:3000', {
   extraParams: ['utm_campaign', 'utm_medium', 'utm_source', 'utm_term'],
@@ -580,15 +620,30 @@ const oidc = new Provider('http://localhost:3000', {
 The lists of supported algorithms exposed via discovery and used when validating request objects and
 client metadata is a union of
 
-- all symmetrical algorithsm where they apply
+- all symmetrical algorithms where they apply
 - algorithms from the keystore you initialize the provider with
 
 If you wish to tune the algorithms further you may do so via the `unsupported` [configuration][defaults]
 property.
 
+## HTTP Request Library / Proxy settings
+By default oidc-provider uses the [got][got-library] module. Because of its lightweight nature of
+the provider will not use environment-defined http(s) proxies. In order to have them used you'll
+need to require and tell oidc-provider to use [request][request-library] instead.
+
+```sh
+# add request to your application package bundle
+npm install request@^2.0.0 --save
+```
+
+```js
+// tell oidc-provider to use request instead of got
+Provider.useRequest();
+```
+
 
 ## Changing HTTP Request Defaults
-On four occasions the OIDC Provider needs to venture out to he world wide webs to fetch or post
+On four occasions the OIDC Provider needs to venture out to the world wide webs to fetch or post
 to external resources, those are
 
 - fetching an authorization request by request_uri reference
@@ -596,7 +651,7 @@ to external resources, those are
 - validating pairwise client's relation to a sector (sector_identifier_uri client metadata)
 - posting to client's backchannel_logout_uri
 
-oidc-provider uses [got][got-library] for http requests with the following default request options
+oidc-provider uses these default options for http requests
 ```js
 const DEFAULT_HTTP_OPTIONS = {
   followRedirect: false,
@@ -622,6 +677,42 @@ Supply an array of string values to acrValues configuration option to set `acr_v
 Passing an empty array disables the acr claim and removes `acr_values_supported` from discovery.
 
 
+## Registering module middlewares (helmet, ip-filters, rate-limiters, etc)
+When using `provider.app` or `provider.callback` as a mounted application in your own koa or express
+stack just follow the respective module's documentation. However, when using the `provider.app` Koa
+instance directly to register i.e. koa-helmet you must push the middleware at infront of oidc-provider in the
+middleware stack.
+
+```js
+const helmet = require('koa-helmet');
+
+// Correct, pushes koa-helmet at the end of the middleware stack but BEFORE oidc-provider.
+provider.use(helmet());
+
+// Incorrect, pushes koa-helmet at the end of the middleware stack AFTER oidc-provider, not being
+// executed when errors are encountered or during actions that do not "await next()".
+provider.app.use(helmet());
+```
+
+
+## Pre- and post-middlewares
+You can push custom middleware to be executed before and after oidc-provider.
+
+```js
+provider.use(async (ctx, next) => {
+  // pre-processing
+  // you may target a specific action here by matching `ctx.path`
+  console.log('middleware pre', ctx.path);
+  await next();
+  console.log('middleware post', ctx._matchedRouteName);
+  // post-processing
+  // since internal route matching was already executed you may target a specific action here
+  // checking `ctx._matchedRouteName`, the unique route names used are "authorization", "token",  
+  // "discovery", "registration", "userinfo", "resume", "certificates", "webfinger",
+  // "client", "introspection", "revocation", "check_session" and "end_session"
+});
+```
+
 ## Mounting oidc-provider
 The following snippets show how a provider instance can be mounted to existing applications with a
 path prefix. As shown it is recommended to rewrite the well-known uri calls so that they get handled
@@ -644,19 +735,43 @@ koaApp.use(rewrite('/.well-known/(.*)', `${prefix}/.well-known/$1`));
 koaApp.use(mount(prefix, oidc.app));
 ```
 
-## Trusting ssl offloading proxies
-Having a TLS offloading proxy in front of node.js running oidc-provider is the norm. As with
-any express/koa application you have to tell your app to trust `x-forwarded-proto` and `x-forwarded-for`
-headers commonly set by those proxies to let the downstream application know of the original protocol
-and ip.
+## Trusting TLS offloading proxies
 
-Depending on your setup you should do the following
+Having a TLS offloading proxy in front of Node.js running oidc-provider is
+the norm. To let your downstream application know of the original protocol and
+ip you have to tell your app to trust `x-forwarded-proto` and `x-forwarded-for`
+headers commonly set by those proxies (as with any express/koa application).
+This is needed for the provider responses to be correct (e.g. to have the right
+https URL endpoints and keeping the right (secure) protocol).
+
+Depending on your setup you should do the following in your downstream
+application code
 
 | setup | example |
 |---|---|
-| standalone oidc-provider | `provider.app.proxy = true; ` |
+| standalone oidc-provider | `provider.proxy = true; ` |
 | oidc-provider mounted to a koa app | `yourKoaApp.proxy = true` |
-| oidc-provider mounted to an express app | `provider.app.proxy = true; ` |
+| oidc-provider mounted to an express app | `provider.proxy = true; ` |
+
+See http://koajs.com/#settings and the [example](/example/index.js).
+
+It is also necessary that the web server doing the offloading also passes
+those headers to the downstream application. Here is a common configuration
+for Nginx (assuming that the downstream application is listening on
+127.0.0.1:8009). Your configuration may vary, please consult your web server
+documentation for details.
+
+```
+location / {
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  proxy_pass http://127.0.0.1:8009;
+  proxy_redirect off;
+}
+```
 
 ## Configuration options
 
@@ -669,6 +784,20 @@ affects: discovery, ID Token acr claim values
 default value:
 ```js
 []
+```
+
+### audiences
+
+Helper used by the OP to push additional audiences to issued ID Tokens and other signed responses. The return value should either be falsy to omit adding additional audiences or an array of strings to push.  
+affects: id token audiences, signed userinfo audiences  
+
+default value:
+```js
+async audiences(ctx, id, token) {
+  // token is a reference to the token used for which a given account is being loaded,
+  // is undefined in scenarios where claims are returned from authorization endpoint
+  return undefined;
+}
 ```
 
 ### claims
@@ -690,7 +819,7 @@ default value:
 
 ### clientCacheDuration
 
-A `Number` value (in seconds) describing how long a dynamically loaded should remain cached.  
+A `Number` value (in seconds) describing how long a dynamically loaded client should remain cached.  
 affects: adapter-backed client cache duration  
 
 default value:
@@ -810,6 +939,7 @@ default value:
   "oauthNativeApps": true,
   "pkce": true,
   "backchannelLogout": false,
+  "frontchannelLogout": false,
   "claimsParameter": false,
   "clientCredentials": false,
   "encryption": false,
@@ -825,18 +955,69 @@ default value:
 
 ### findById
 
-Helper used by the OP to load your account and retrieve it's avaialble claims. The return value should be a Promise and #claims() can return a Promise too  
+Helper used by the OP to load your account and retrieve it's available claims. The return value should be a Promise and #claims() can return a Promise too  
 affects: authorization, authorization_code and refresh_token grants, id token claims  
 
 default value:
 ```js
 async findById(ctx, id, token) {
-  // token is a reference to the token used for which a given account is being loaded,
-  // is undefined in scenarios where claims are returned from authorization endpoint
+  // "token" is a reference to the token used for which a given account is being loaded,
+  //   is undefined in scenarios where claims are returned from authorization endpoint
   return {
     accountId: id,
-    async claims() { return { sub: id }; },
+    async claims(use, scope) {
+      // "use" can either be "id_token" or "userinfo", depending on where the specific claims are
+      //   intended to be put in
+      // "scope" is the intended scope, while oidc-provider will mask claims depending on the
+      //   scope automatically you might want to skip loading some claims from external resources
+      //   etc. based on this detail or not return them in id tokens but only userinfo and so on.
+      return { sub: id };
+    },
   };
+}
+```
+
+### frontchannelLogoutPendingSource
+
+HTML source rendered when there are pending front-channel logout iframes to be called to trigger RP logouts. It should handle waiting for the frames to be loaded as well as have a timeout mechanism in it.  
+affects: session management  
+
+default value:
+```js
+async frontchannelLogoutPendingSource(ctx, frames, postLogoutRedirectUri, timeout) {
+  ctx.body = `<!DOCTYPE html>
+<head>
+<title>Logout</title>
+<style>
+  iframe {
+    visibility: hidden;
+    position: absolute;
+    left: 0;
+    top: 0;
+    height:0;
+    width:0;
+    border: none;
+  }
+</style>
+</head>
+<body>
+${frames.join('')}
+<script>
+  var loaded = 0;
+  function redirect() {
+    window.location.replace("${postLogoutRedirectUri}");
+  }
+  function frameOnLoad() {
+    loaded += 1;
+    if (loaded === ${frames.length}) redirect();
+  }
+  Array.prototype.slice.call(document.querySelectorAll('iframe')).forEach(function (element) {
+    element.onload = frameOnLoad;
+  });
+  setTimeout(redirect, ${timeout});
+</script>
+</body>
+</html>`;
 }
 ```
 
@@ -964,7 +1145,7 @@ default value:
 
 ### refreshTokenRotation
 
-Configures if and how the OP rotates refresh tokens after they are used  
+Configures if and how the OP rotates refresh tokens after they are used. Supported values are 1) `"none"` when refresh tokens are not rotated and their initial expiration date is final or 2) `"rotateAndConsume"` when refresh tokens are rotated when used, current token is marked as consumed and new one is issued with new TTL, when a consumed refresh token is encountered an error is returned instead and the whole token chain (grant) is revoked.  
 affects: refresh token rotation and adjacent revocation  
 
 default value:
@@ -1029,7 +1210,7 @@ default value:
 
 ### routes
 
-Routing values used by the OP  
+Routing values used by the OP. Only provide routes starting with "/"  
 affects: routing  
 
 default value:
@@ -1142,20 +1323,22 @@ default value:
 ```
 <!-- END CONF OPTIONS -->
 
-[client-metadata]: http://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
-[core-account-claims]: http://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
-[core-offline-access]: http://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
-[core-claims-url]: http://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter
-[core-jwt-parameters-url]: http://openid.net/specs/openid-connect-core-1_0.html#JWTRequests
-[aggregated-distributed-claims]: http://openid.net/specs/openid-connect-core-1_0.html#AggregatedDistributedClaims
-[backchannel-logout]: http://openid.net/specs/openid-connect-backchannel-1_0-04.html
+[client-metadata]: https://openid.net/specs/openid-connect-registration-1_0.html#ClientMetadata
+[core-account-claims]: https://openid.net/specs/openid-connect-core-1_0.html#ScopeClaims
+[core-offline-access]: https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess
+[core-claims-url]: https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter
+[core-jwt-parameters-url]: https://openid.net/specs/openid-connect-core-1_0.html#JWTRequests
+[aggregated-distributed-claims]: https://openid.net/specs/openid-connect-core-1_0.html#AggregatedDistributedClaims
+[backchannel-logout]: https://openid.net/specs/openid-connect-backchannel-1_0-04.html
+[frontchannel-logout]: https://openid.net/specs/openid-connect-frontchannel-1_0-02.html
 [pkce]: https://tools.ietf.org/html/rfc7636
 [introspection]: https://tools.ietf.org/html/rfc7662
 [registration-management]: https://tools.ietf.org/html/rfc7592
-[registration]: http://openid.net/specs/openid-connect-registration-1_0.html
+[registration]: https://openid.net/specs/openid-connect-registration-1_0.html
 [revocation]: https://tools.ietf.org/html/rfc7009
 [oauth-native-apps]: https://tools.ietf.org/html/rfc8252
-[session-management]: http://openid.net/specs/openid-connect-session-1_0-28.html
+[session-management]: https://openid.net/specs/openid-connect-session-1_0-28.html
 [got-library]: https://github.com/sindresorhus/got
+[request-library]: https://github.com/request/request
 [password-grant]: https://tools.ietf.org/html/rfc6749#section-4.3
 [defaults]: /lib/helpers/defaults.js

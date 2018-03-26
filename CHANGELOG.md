@@ -4,50 +4,114 @@ Yay for [SemVer](http://semver.org/).
 
 **Table of Contents**
 
-<!-- TOC START min:2 max:3 link:true update:true -->
+<!-- TOC START min:2 max:2 link:true update:true -->
+  - [2.16.0](#2160)
+  - [2.15.0](#2150)
+  - [2.14.x](#214x)
+  - [2.13.x](#213x)
+  - [2.12.0](#2120)
+  - [2.11.x](#211x)
+  - [2.10.0](#2100)
+  - [2.9.x](#29x)
   - [2.8.x](#28x)
-    - [2.8.3](#283)
-    - [2.8.2](#282)
-    - [2.8.0](#280)
   - [2.7.x](#27x)
-    - [2.7.2](#272)
   - [2.6.0](#260)
   - [2.5.x](#25x)
-    - [2.5.1](#251)
-    - [2.5.0](#250)
   - [2.4.x](#24x)
-    - [2.4.1](#241)
-    - [2.4.0](#240)
   - [2.3.x](#23x)
-    - [2.3.2](#232)
-    - [2.3.1](#231)
-    - [2.3.0](#230)
   - [2.2.x](#22x)
-    - [2.2.1](#221)
-    - [2.2.0](#220)
   - [2.1.0](#210)
   - [2.0.x](#20x)
-    - [2.0.1](#201)
-    - [2.0.0](#200)
   - [^1.0.0](#100)
-    - [1.15.x](#115x)
-    - [1.14.x](#114x)
-    - [1.13.x](#113x)
-    - [1.12.x](#112x)
-    - [1.11.x](#111x)
-    - [1.10.x](#110x)
-    - [1.9.x](#19x)
-    - [1.8.x](#18x)
-    - [1.7.x](#17x)
-    - [1.6.x](#16x)
-    - [1.5.x](#15x)
-    - [1.4.x](#14x)
-    - [1.3.x](#13x)
-    - [1.2.x](#12x)
-    - [1.1.x](#11x)
-    - [1.0.x](#10x)
 
 <!-- TOC END -->
+## 2.16.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.15.0...v2.16.0)
+- supported PKCE code challenge methods are now configurable, use to i.e. disable `plain` for
+  stricter OIDC profiles and new deployments where legacy clients without `S256` support aren't
+  to be expected.
+- added configuration validations for subjectTypes and pkce supportedMethods
+
+## 2.15.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.14.1...v2.15.0)
+- add `provider.use((ctx, next) => {})` middleware support
+- add `provider.listen(port_or_socket)`
+- add attribute delegates `proxy`, `keys`, `env`, `subdomainOffset` from provider to the underlying
+  koa app
+- updated docs
+
+## 2.14.x
+### 2.14.1
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.14.0...v2.14.1)
+- bumped minimal `debug` dependency version due to its found vulnerability in lesser versions
+- adjusted documentation on `refreshTokenRotation` configuration option
+- adjusted documentation on TLS offloading
+
+### 2.14.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.13.1...v2.14.0)
+- added current account id from OP session to interaction sessions
+- added `provider.setSessionAccountId(req, id, [ts])` helper for setting OP
+  session from other contexts, such as interrupted interactions or password
+  reset flows.
+
+## 2.13.x
+### 2.13.1
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.13.0...v2.13.1)
+- `clientCacheDuration` no longer has any effect on static clients passed through the
+  `#provider.initialize()` call
+
+### 2.13.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.12.0...v2.13.0)
+- `#provider.Client.cacheClear([id])` can now optionally drop just one specific client from provider
+  cache when provided its client_id
+
+## 2.12.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.11.2...v2.12.0)
+- `findById` returned struct's `#claims()` method is now called with two parameters (use and
+  scope) allowing to fine-tune the returned claims depending on the intended place for these claims.
+
+## 2.11.x
+### 2.11.2
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.11.1...v2.11.2)
+- aligned `oidc-provider:token` DEBUG format
+- exposed client validation schema prototype under `provider.Client.Schema`
+
+### 2.11.1
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.11.0...v2.11.1)
+- fixed a bug where non global logouts would not trigger back and front-channel logout features
+  for the one client that gets logged out.
+- added missing `backchannel.success` and `backchannel.error` events
+
+### 2.11.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.10.0...v2.11.0)
+- added no-cache headers to userinfo responses
+- added optional support for draft02 of [Front-Channel Logout 1.0](https://openid.net/specs/openid-connect-frontchannel-1_0-02.html)
+  - enable with configuration `features.frontchannelLogout = true`;
+  - adds new client properties `frontchannel_logout_uri` and `frontchannel_logout_session_required`
+  - adds new discovery properties `frontchannel_logout_supported` and `frontchannel_logout_session_supported`
+  - added `frontchannelLogoutPendingSource` helper for customizing the pending frontchannel web page
+    HTML source
+
+## 2.10.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.9.2...v2.10.0)
+- added `audiences` helper function to allow for pushing additional audiences to issued ID Tokens,
+  this will additionally push an `azp` claim with the `client_id` value as per Core 1.0 spec defined
+  ID Token validations.
+
+## 2.9.x
+### 2.9.2
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.9.1...v2.9.2)
+- added used http verb to error debug messages
+- added a descriptive "method not allowed" error message
+
+### 2.9.1
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.9.0...v2.9.1)
+- fixed `useRequest` to be a static method as documented
+
+### 2.9.0
+- [DIFF](https://github.com/panva/node-oidc-provider/compare/v2.8.3...v2.9.0)
+- added and documented the optional use of [request][request-library] instead of [got][got-library]
+  for deployments requiring http(s) proxies to reach out to the internet wilderness
 
 ## 2.8.x
 ### 2.8.3
@@ -368,3 +432,5 @@ Bugfixes:
 - client validation: http URI scheme is now forbidden for implicit web clients
 
 [debug-link]: https://github.com/visionmedia/debug
+[got-library]: https://github.com/sindresorhus/got
+[request-library]: https://github.com/request/request
